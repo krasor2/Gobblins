@@ -1,0 +1,28 @@
+name: Smoke Cave Tribe
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repository without marketplace actions
+        run: git clone --depth 1 --branch main https://github.com/krasor2/Gobblins.git app
+      - name: Show runtime
+        working-directory: app
+        run: node --version && npm --version
+      - name: Install
+        working-directory: app
+        run: npm install
+      - name: Test
+        working-directory: app
+        run: npm run test
+      - name: Build
+        working-directory: app
+        run: npm run build
