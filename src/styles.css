@@ -1,0 +1,30 @@
+:root {
+  color-scheme: dark;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: #09070d;
+  touch-action: none;
+}
+
+* { box-sizing: border-box; }
+
+html,
+body,
+#game-root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 45%, #17101c 0%, #09070d 62%, #050408 100%);
+}
+
+body {
+  overscroll-behavior: none;
+  user-select: none;
+}
+
+canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  touch-action: none;
+}
