@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="theme-color" content="#09070d" />
+  <title>Cave Tribe v0.1.1</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: #09070d;
+      touch-action: none;
+    }
+    * { box-sizing: border-box; }
+    html, body, #game-root {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 45%, #17101c 0%, #09070d 62%, #050408 100%);
+    }
+    body { overscroll-behavior: none; user-select: none; }
+    canvas {
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      touch-action: none;
+    }
+    #loading {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: grid;
+      place-items: center;
+      padding: 28px;
+      color: #f5d0fe;
+      background: #09070d;
+      text-align: center;
+      line-height: 1.55;
+    }
+    #loading strong { color: #ffffff; font-size: 18px; }
+    #loading small { color: #bdb3c4; }
+  </style>
+</head>
+<body>
+  <main id="game-root" aria-label="Cave Tribe"></main>
+  <div id="loading"><div><strong>CAVE TRIBE v0.1.1</strong><br>Ładowanie Phasera i kompilowanie gry…<br><small>Plik PLAY wymaga połączenia z internetem.</small></div></div>
+
+  <script>
+    'use strict';
+
+    const COMMIT = 'bc1f6427fa0fb37005efd6e691364ae321f24e8c';
+    const REPOSITORY_ROOT = `https://cdn.jsdelivr.net/gh/krasor2/Gobblins@${COMMIT}/`;
+    const SOURCE_FILES = [
+      'src/game/types.ts',
+      'src/core/random.ts',
+      'src/world/cave.ts',
+      'src/navigation/pathfinding.ts',
+      'src/creatures/SpawnFormationResolver.ts',
+      'src/creatures/goblin.ts',
+      'src/creatures/GoblinView.ts',
+      'src/world/CaveRenderer.ts',
+      'src/input/cameraMath.ts',
+      'src/input/CameraController.ts',
+      'src/game/events.ts',
+      'src/scenes/UIScene.ts',
+      'src/scenes/GameScene.ts'
+    ];
+
+    function loadScript(url) {
+      return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = url;
+        script.onload = resolve;
+        script.onerror = () => reject(new Error(`Nie udało się pobrać: ${url}`));
+        document.head.appendChild(script);
+      });
+    }
+
+    async function fetchText(url) {
+      const response = await fetch(url, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`${response.status} podczas pobierania ${url}`);
+      return response.text();
+    }
+
+    function stripModuleSyntax(source) {
+      return source
+        .replace(/import\s+[\s\S]*?\s+from\s+['"][^'"]+['"]\s*;?/g, '')
+        .replace(/import\s+['"][^'"]+['"]\s*;?/g, '')
+        .replace(/\bexport\s+(?=(?:abstract\s+)?(?:class|function|const|let|var|interface|type|enum)\b)/g, '')
+        .replace(/\bexport\s*\{[^}]*\}\s*;?/g, '');
+    }
+
+    function bootGame(compiledSources) {
+      const bootstrap = `
+        const game = new Phaser.Game({
+          type: Phaser.AUTO,
+          parent: 'game-root',
+          backgroundColor: '#09070d',
+          pixelArt: true,
+          antialias: false,
+          roundPixels: true,
+          scale: {
+            mode: Phaser.Scale.RESIZE,
+            width: window.innerWidth,
+            height: window.innerHeight
+          },
+          render: {
+            antialias: false,
+            pixelArt: true,
+            roundPixels: true
+          },
+          scene: [GameScene, UIScene]
+        });
+        window.addEventListener('beforeunload', () => game.destroy(true));
+      `;
+      const executable = `${compiledSources}\n${bootstrap}`;
+      new Function('Phaser', executable)(window.Phaser);
+    }
+
+    async function start() {
+      const loading = document.getElementById('loading');
+      try {
+        await Promise.all([
+          loadScript('https://cdn.jsdelivr.net/npm/phaser@4.2.1/dist/phaser.min.js'),
+          loadScript('https://cdn.jsdelivr.net/npm/typescript@5.9.2/lib/typescript.js')
+        ]);
+
+        if (!window.Phaser) throw new Error('Phaser nie został załadowany.');
+        if (!window.ts) throw new Error('Kompilator TypeScript nie został załadowany.');
+
+        const sources = await Promise.all(
+          SOURCE_FILES.map(async (path) => `\n// ---- ${path} ----\n${stripModuleSyntax(await fetchText(REPOSITORY_ROOT + path))}`)
+        );
+
+        const result = window.ts.transpileModule(sources.join('\n'), {
+          compilerOptions: {
+            target: window.ts.ScriptTarget.ES2022,
+            module: window.ts.ModuleKind.None,
+            useDefineForClassFields: true,
+            removeComments: false
+          },
+          reportDiagnostics: true
+        });
+
+        const errors = (result.diagnostics || []).filter(
+          diagnostic => diagnostic.category === window.ts.DiagnosticCategory.Error
+        );
+        if (errors.length > 0) {
+          const message = errors.map(error => window.ts.flattenDiagnosticMessageText(error.messageText, '\n')).join('\n');
+          throw new Error(`Błąd kompilacji:\n${message}`);
+        }
+
+        bootGame(result.outputText);
+        loading.remove();
+      } catch (error) {
+        console.error(error);
+        loading.innerHTML = `<div><strong>Nie udało się uruchomić gry.</strong><br><br>${String(error.message || error)}<br><br><small>Sprawdź połączenie z internetem albo uruchom źródła poleceniem npm install, a następnie npm run dev.</small></div>`;
+      }
+    }
+
+    start();
+  </script>
+</body>
+</html>
